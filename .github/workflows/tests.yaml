@@ -1,0 +1,41 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test_action:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          # dump github event
+          jq -C . <<< '${{ toJSON(github) }}'
+      - name: Test 1
+        id: test1
+        uses: ./
+        with:
+          key: test1
+          comment: Test 1 - This is a dummy comment. (${{ github.run_id }})
+      - name: Test 2
+        uses: ./
+        with:
+          key: test2
+          comment: Test 2 - ${{ github.run_id }}
+      - name: Test 1 get
+        uses: ./
+        with:
+          ids: ${{ steps.test1.outputs.ids }}
+          operation: get
+      - name: Test 1 get
+        uses: ./
+        with:
+          key: test1
+          comment: Updated version of Test1 ${{ steps.test1.outputs.ids }} 
+      - name: Test 1 delete
+        uses: ./
+        with:
+          ids: ${{ steps.test1.outputs.ids }}
+          operation: delete
