@@ -1,6 +1,6 @@
 name: Pull Request Comment Direct
 
-description: Post, update, delete, minimize, find pull request comment(s). Simple and powerful comment interaction for your custom actions.
+description: Post, update, delete & get pull request comment(s). Simple & powerful comment interaction for your custom actions, with simple persistent key based comment tracking.
 
 inputs:
   author:
