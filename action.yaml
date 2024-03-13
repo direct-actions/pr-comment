@@ -82,7 +82,8 @@ runs:
   steps:
     - env:
         CLASSIFIER: ${{ inputs.classifier }}
-        COMMENT: '<!--direct-actions/pr-comment:key:${{ inputs.key }}-->${{ inputs.comment }}'
+        COMMENT: ${{ inputs.comment }}
+        COMMENT_KEY: ${{ inputs.key }}
         GITHUB_TOKEN: ${{ inputs.token }}
         OPERATION: ${{ inputs.operation }}
         PULL_REQUEST: ${{ inputs.pull-request }}
@@ -98,6 +99,7 @@ runs:
 
         ALL_COMMENTS=$(mktemp)
         CLASSIFIER="$(tr '[a-z]' '[A-Z]' <<< "$CLASSIFIER")"
+        COMMENT='<!--direct-actions/pr-comment:key:'"${COMMENT_KEY}-->"$'\n'"${COMMENT}"
         COMMENTS=$(mktemp)
         ERROR=$(mktemp)
 
