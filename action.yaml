@@ -1,0 +1,230 @@
+name: Pull Request Comment Direct
+
+description: Post, update, delete, minimize, find pull request comment(s). Simple and powerful comment interaction for your custom actions.
+
+inputs:
+  author:
+    default: ''
+    description: (Optional) specify author name to match existing comment(s).
+    required: false
+    type: string
+  comment:
+    default: ''
+    description: Body of comment, used with get/post/upsert operations.
+    required: false
+    type: string
+  ids:
+    default: ''
+    description: IDs to operate on, can be passed directly from previous call to this same action.
+    required: false
+    type: string
+  key:
+    default: ''
+    description: (Optional) Unique & hidden key used to match comment(s) across operations.
+    required: false
+    type: string
+  matches:
+    default: last
+    description: Mode to operate on exiting comments, can be first, last (default) or all.
+    required: false
+    type: string
+  operation:
+    default: upsert
+    description: Operation to execute - can be one of get, post, upsert (default), delete, minimize.
+    required: false
+    type: string
+  pull-request:
+    default: ${{ github.event.number || github.event.issue.number }}
+    description: Override pull request number (default is auto-determined based on pull_request/push (merge) event).
+    required: false
+    type: string
+  quiet:
+    default: false
+    description: Do not output warnings when attempting operations on non-matching comments.
+    required: false
+    type: string
+  regex:
+    default: ''
+    description: (Optional) Regex to match body of existing comment(s) for get/upsert/delete operations.
+    required: false
+    type: string
+  regex-flags:
+    default: ''
+    description: (Optional) Regex flags used along with regex argument; see jq regex documention for details.
+    required: false
+    type: string
+  repository:
+    default: ${{ github.repository }}
+    description: Override repository name (default is repo the action is run in) - use owner/repo format.
+    required: false
+    type: string
+  token:
+    default: ${{ github.token }}
+    description: Override default GitHub token.
+    required: false
+    type: string
+outputs:
+  ids:
+    description: JSON list of matching comment IDs; can be used for chaining.
+    value: ${{ steps.operation.outputs.ids }}
+  json-output:
+    description: JSON output of last API operation.
+    value: ${{ steps.operation.outputs.json-output }}
+  pull-request:
+    description: Pass-through of inputs.pull-request; can be used for chaining.
+    value: ${{ inputs.pull-request }}
+  repository:
+    description: Pass-through of inputs.repository; can be used for chaining.
+    value: ${{ inputs.repository }}
+  token:
+    description: Pass-through of inputs.token; can be used for chaining.
+    value: ${{ inputs.token }}
+
+runs:
+  using: composite
+  steps:
+    - env:
+        GITHUB_TOKEN: ${{ inputs.token }}
+        IDS: ${{ inputs.ids }}
+        PULL_REQUEST: ${{ inputs.pull-request }}
+        REPOSITORY: ${{ inputs.repository }}
+      id: setup
+      if: ${{ inputs.operation != 'post' }}
+      run: |
+        # setup
+        #
+        #set -x
+        OUTPUT=$(mktemp)
+        ERROR=$(mktemp)
+        if [ -n "$IDS" ] ; then
+          echo "ids=${IDS}" | tee -a "$GITHUB_OUTPUT"
+        else
+          if [ -z "$PULL_REQUEST" ] || [ -z "$REPOSITORY" ] ; then
+            echo "::error title=direct-actions/pr-comment - Missing argument::Missing repository (${REPOSITORY}) or PR number (${PULL_REQUEST})."
+            exit 1 
+          elif ! gh api \
+              --method GET \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "/repos/${REPOSITORY}/issues/${PULL_REQUEST}/comments" \
+              > "$OUTPUT" 2> "$ERROR" ; then
+            echo "::error title=direct-actions/pr-comment - Invalid PR or Repository specified::Invalid repository (${REPOSITORY}) or PR number (${PULL_REQUEST}) specified - $(cat "$ERROR")."
+            exit 1 
+          fi
+
+          jq \
+            --arg author '${{ inputs.author }}' \
+            --arg key '${{ inputs.key }}' \
+            --arg matches '${{ inputs.matches }}' \
+            --arg regex '${{ inputs.regex }}' \
+            --arg regex_flags '${{ inputs.regex-flags }}' \
+            -rC '
+            map(
+              if $ARGS.named.author? != "" then
+                select(.author.login == $ARGS.named.author)
+              else
+                .
+              end |
+              if $ARGS.named.key? != "" then
+                select(
+                  .body |
+                  startswith("<!--direct-actions/pr-comment:key:\($ARGS.named.key)-->")
+                )
+              else
+                .
+              end |
+              if $ARGS.named.regex? != "" then
+                select(.body | test($ARGS.named.regex ; $ARGS.named.regex_flags))
+              else
+                .
+              end |
+              .id
+            ) |
+            if length == 0 then
+              []
+            elif $ARGS.named.matches? == "first" then
+              [first]
+            elif $ARGS.named.matches? == "last" then
+              [last]
+            elif $ARGS.named.matches? == "all" then
+              .
+            else
+              error("Unknown value for argument \"matches\": \($ARGS.named.matches)")
+            end |
+            "ids=\(tojson)"
+          ' "$OUTPUT" | tee -a "$GITHUB_OUTPUT"
+        fi
+      shell: bash
+    - env:
+        COMMENT: '<!--direct-actions/pr-comment:key:${{ inputs.key }}-->${{ inputs.comment }}'
+        GITHUB_TOKEN: ${{ inputs.token }}
+        IDS: ${{ steps.setup.outputs.ids }}
+        OPERATION: ${{ inputs.operation }}
+        PULL_REQUEST: ${{ inputs.pull-request }}
+        QUIET: ${{ inputs.quiet }}
+        REPOSITORY: ${{ inputs.repository }}
+      id: operation
+      run: |
+        # ${{ inputs.operation }}
+        #
+        #set -x
+        OUTPUT=$(mktemp)
+        ERROR=$(mktemp)
+        OUTPUT_IDS=()
+        if [ "$OPERATION" == 'post' ] ; then
+          IDS='["no-id"]'
+        elif [ "$OPERATION" == 'upsert' ] ; then
+          if [ -z "$IDS" ] || [ "$IDS" = '[]' ]; then
+            IDS='["no-id"]'
+            OPERATION=post
+          fi
+        elif [[ "$OPERATION" == 'delete' || "$OPERATION" == 'upsert' || "$OPERATION" == 'get' ]] ; then
+          if [ -z "$IDS" ] || [ "$IDS" = '[]' ]; then
+            if [ "$QUIET" != 'true' ] ; then
+              echo "::warning title=direct-actions/pr-comment - Cannot perform operation::Attempting operation ${OPERATION} but cannot find matching comment(s)."
+            fi
+            exit 0
+          fi
+        else
+          echo "::warning title=direct-actions/pr-comment - Invalid operation::Invalid operation (${OPERATION}) specified."
+          exit 1
+        fi
+
+        for ID in $(jq -rn "${IDS}[]") ; do
+          URL="/repos/${REPOSITORY}/issues/comments/${ID}"
+          case "$OPERATION" in
+            delete)
+              METHOD=DELETE
+              ;;
+            get)
+              METHOD=GET
+              ;;
+            post)
+              METHOD=POST
+              URL="/repos/${REPOSITORY}/issues/${PULL_REQUEST}/comments"
+              ;;
+            upsert)
+              METHOD=PATCH
+              ;;
+          esac
+          if ! gh api \
+              --method "$METHOD" \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "$URL" \
+              -f body="${COMMENT}" >"$OUTPUT" 2>"$ERROR" ; then
+            echo "::error title=direct-actions/pr-comment - Error operating on comment::Operation (${OPERATION}) failed on comment ${ID} - $(cat "$ERROR")."
+            exit 1 
+          fi
+          OUTPUT_IDS+=$(jq -r .id "$OUTPUT")
+          echo "::group::operation=${OPERATION} method=${METHOD} id=${ID} url=${URL}"
+          jq -C . "$OUTPUT"
+          echo "::endgroup::"
+        done
+        echo "${OUTPUT_IDS[@]}" | jq -rs '"ids=\(map(tostring))"' | tee -a "$GITHUB_OUTPUT"
+
+        echo 'json-output<<_EOF_' >> "$GITHUB_OUTPUT"
+        cat "$OUTPUT" >> "$GITHUB_OUTPUT"
+        echo >> "$GITHUB_OUTPUT"
+        echo '_EOF_' >> "$GITHUB_OUTPUT"
+      shell: bash
