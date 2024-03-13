@@ -16,12 +16,12 @@ inputs:
     type: string
   comment:
     default: ''
-    description: Body of comment, used with get/post/upsert operations.
+    description: Body of comment, used with `upsert` or `post` operation.
     required: false
     type: string
   ids:
     default: ''
-    description: IDs to operate on, can be passed directly from previous call to this same action.
+    description: JSON list of IDs to operate on, can be passed directly from previous call to this same action.
     required: false
     type: string
   key:
@@ -31,17 +31,17 @@ inputs:
     type: string
   match:
     default: last
-    description: Mode to operate on exiting comments, can be first, last (default) or all.
+    description: Mode to operate on exiting comments, can be `first`, `last` or `all`.
     required: false
     type: string
   operation:
     default: upsert
-    description: Operation to execute - can be one of get, post, upsert (default), delete, minimize.
+    description: Operation to execute - can be one of `delete`, `get`, `post`, `upsert` (default).
     required: false
     type: string
   pull-request:
     default: ${{ github.event.number }}
-    description: Override pull request number (default is auto-determined based on pull_request/push (merge) event).
+    description: Override pull request number (default is auto-determined based on pull_request event).
     required: false
     type: string
   quiet:
@@ -51,7 +51,7 @@ inputs:
     type: string
   regex:
     default: ''
-    description: (Optional) Regex to match body of existing comment(s) for get/upsert/delete operations.
+    description: (Optional) Regular expression to test body of existing comment(s) for `delete`, `get`, or `upsert` operations.
     required: false
     type: string
   regex-flags:
@@ -61,7 +61,7 @@ inputs:
     type: string
   repository:
     default: ${{ github.repository }}
-    description: Override repository name (default is repo the action is run in) - use owner/repo format.
+    description: Override repository name (default is repo the action is run in) - use `owner/repo` format.
     required: false
     type: string
   token:
@@ -109,19 +109,25 @@ runs:
           echo "ids=${IDS}" | tee -a "$GITHUB_OUTPUT"
         else
           if [ -z "$PULL_REQUEST" ] ; then
-            echo "::error title=direct-actions/pr-comment - Cannot determine pull request::Cannot determine pull request number in this sitation, pass explicitly via pull-request input."
-            exit 1 
+            echo "::error title=direct-actions/pr-comment - Cannot determine" \
+              "pull request::Cannot determine pull request number in this" \
+              "sitation, pass explicitly via pull-request input."
+            exit 1
           elif [ -z "$REPOSITORY" ] ; then
-            echo "::error title=direct-actions/pr-comment - Cannot determine repository::Cannot determine repository in this situation, pass explicitly via repository input."
-            exit 1 
+            echo "::error title=direct-actions/pr-comment - Cannot determine" \
+              "repository::Cannot determine repository in this situation, pass" \
+              "explicitly via repository input."
+            exit 1
           elif ! gh api \
               --method GET \
               -H "Accept: application/vnd.github+json" \
               -H "X-GitHub-Api-Version: 2022-11-28" \
               "/repos/${REPOSITORY}/issues/${PULL_REQUEST}/comments" \
               > "$OUTPUT" 2> "$ERROR" ; then
-            echo "::error title=direct-actions/pr-comment - Invalid PR or Repository specified::Invalid repository (${REPOSITORY}) or PR number (${PULL_REQUEST}) specified - $(cat "$ERROR")."
-            exit 1 
+            echo "::error title=direct-actions/pr-comment - Could not retrieve" \
+              "comments::Error retrieving comments from repository (${REPOSITORY})" \
+              "PR number (${PULL_REQUEST}) - \"$(cat "$ERROR")\"."
+            exit 1
           fi
 
           jq \
@@ -154,12 +160,12 @@ runs:
             ) |
             if length == 0 then
               []
+            elif $ARGS.named.match? == "all" then
+              .
             elif $ARGS.named.match? == "first" then
               [first]
             elif $ARGS.named.match? == "last" then
               [last]
-            elif $ARGS.named.match? == "all" then
-              .
             else
               error("Unknown value for argument \"match\": \($ARGS.named.match)")
             end |
@@ -227,7 +233,7 @@ runs:
               "$URL" \
               -f body="${COMMENT}" >"$OUTPUT" 2>"$ERROR" ; then
             echo "::error title=direct-actions/pr-comment - Error operating on comment::Operation (${OPERATION}) failed on comment ${ID} - $(cat "$ERROR")."
-            exit 1 
+            exit 1
           fi
           OUTPUT_IDS+=$(jq -r .id "$OUTPUT")
           echo "::group::operation=${OPERATION} method=${METHOD} id=${ID} url=${URL}"
