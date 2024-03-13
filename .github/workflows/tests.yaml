@@ -68,7 +68,6 @@ jobs:
         with:
           key: test1
           match: first
-          ids: ${{ steps.t1get.outputs.ids }}
           comment: key=test1 v1 - This is updated dummy comment. (${{ github.run_id }})
 
       - run: sleep 2
@@ -78,3 +77,9 @@ jobs:
         with:
           key: test1
           comment: key=test1 - This is final dummy comment. (${{ github.run_id }})
+
+      - name: Test 1 minimize
+        uses: ./
+        with:
+          key: test1
+          operation: minimize
