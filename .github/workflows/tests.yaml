@@ -51,6 +51,11 @@ jobs:
           key: test2
           comment: Testx2 upsert - ${{ github.run_id }}
 
+      - name: List-keys
+        uses: ./
+        with:
+          operation: list-keys
+
       - name: Test 1 get
         id: t1get
         uses: ./
