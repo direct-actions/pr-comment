@@ -109,7 +109,7 @@ runs:
         OUTPUT=$(mktemp)
         ERROR=$(mktemp)
         if [ -n "$IDS" ] ; then
-          echo "ids=${IDS}" | tee -a "$GITHUB_OUTPUT"
+          jq -r '"ids=\(join(" "))"' <<< "$IDS" >> "$GITHUB_OUTPUT"
         else
           if [ -z "$PULL_REQUEST" ] ; then
             echo "::error title=direct-actions/pr-comment - Cannot determine" \
@@ -172,8 +172,8 @@ runs:
             else
               error("Unknown value for argument \"match\": \($ARGS.named.match)")
             end |
-            "ids=\(tojson)"
-          ' "$OUTPUT" | tee -a "$GITHUB_OUTPUT"
+            "ids=\(join(" "))"
+          ' "$OUTPUT" >> "$GITHUB_OUTPUT"
         fi
         echo "output-file=${OUTPUT}" >> "$GITHUB_OUTPUT"
         echo "pull-request=${PULL_REQUEST}" >> "$GITHUB_OUTPUT"
@@ -220,7 +220,7 @@ runs:
           fi
         }
 
-        if [ "$OPERATION" == 'post' ] || [[ "$OPERATION" == 'upsert' && ( -z "$IDS" || "$IDS" = '[]' ) ]]; then
+        if [ "$OPERATION" == 'post' ] || [[ "$OPERATION" == 'upsert' && -z "$IDS" ]]; then
           gh_api "$OPERATION" POST "/repos/${REPOSITORY}/issues/${PULL_REQUEST}/comments" "$COMMENT"
           OUTPUT_IDS=("$(jq -r .id "$OUTPUT")")
         elif [ "$OPERATION" == 'list-keys' ] ; then
@@ -236,15 +236,12 @@ runs:
           "$OUTPUT" | \
           tee -a "$GITHUB_OUTPUT"
         elif [[ "$OPERATION" =~ ^(delete|get|upsert)$ ]] ; then
-          if [ -z "$IDS" ] || [ "$IDS" = '[]' ]; then # will IDS ever be -z ?
-            if [ "$QUIET" != 'true' ] ; then
-              echo "::warning title=direct-actions/pr-comment - Cannot perform" \
-                "operation::Attempting operation ${OPERATION} but cannot find" \
-                "matching comment(s)."
-            fi
-            exit 0 # do we need to exit here
+          if [ -z "$IDS" ] && [ "$QUIET" != 'true' ] ; then
+            echo "::warning title=direct-actions/pr-comment - Cannot perform" \
+              "operation::Attempting operation ${OPERATION} but cannot find" \
+              "matching comment(s)."
           else
-            for ID in $(jq -rn "${IDS}[]") ; do
+            for ID in "$IDS" ; do
               URL="/repos/${REPOSITORY}/issues/comments/${ID}"
               case "$OPERATION" in
                 delete)
