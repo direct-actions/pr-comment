@@ -1,7 +1,12 @@
 name: Pull Request Comment Direct
 
-description: Easy comment interaction with persistent key based comment tracking across multiple runs. Upsert, post, delete comments.
+branding:
+  icon: message-square
+  color: blue
 
+description: >
+  Easy comment interaction with persistent key based comment tracking across
+  multiple runs. Upsert, post, delete comments.
 
 inputs:
   author:
