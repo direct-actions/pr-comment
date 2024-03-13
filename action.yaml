@@ -100,7 +100,7 @@ runs:
         OUTPUT=$(mktemp)
         ERROR=$(mktemp)
         if [ -z "$PULL_REQUEST" ] ; then
-          PULL_REQUEST=$(gh pr view --json number -jq .number)
+          PULL_REQUEST=$(gh pr view --json number --jq .number)
           echo "Used gh to query PR number (${PULL_REQUEST})"
         fi
         if [ -n "$IDS" ] ; then
