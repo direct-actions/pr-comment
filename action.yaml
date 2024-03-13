@@ -1,4 +1,4 @@
-name: Pull Request Comment Direct
+name: Pull Request Comment
 
 description: Post, update, delete, minimize, find pull request comment(s). Simple and powerful comment interaction for your custom actions.
 
@@ -23,7 +23,7 @@ inputs:
     description: (Optional) Unique & hidden key used to match comment(s) across operations.
     required: false
     type: string
-  matches:
+  match:
     default: last
     description: Mode to operate on exiting comments, can be first, last (default) or all.
     required: false
@@ -34,7 +34,7 @@ inputs:
     required: false
     type: string
   pull-request:
-    default: ${{ github.event.number || github.event.issue.number }}
+    default: ${{ github.event.number }}
     description: Override pull request number (default is auto-determined based on pull_request/push (merge) event).
     required: false
     type: string
@@ -67,6 +67,9 @@ outputs:
   ids:
     description: JSON list of matching comment IDs; can be used for chaining.
     value: ${{ steps.operation.outputs.ids }}
+  key:
+    description: Pass-through of inputs.key; can be used for chaining.
+    value: ${{ inputs.key }}
   json-output:
     description: JSON output of last API operation.
     value: ${{ steps.operation.outputs.json-output }}
@@ -96,11 +99,18 @@ runs:
         #set -x
         OUTPUT=$(mktemp)
         ERROR=$(mktemp)
+        if [ -z "$PULL_REQUEST" ] ; then
+          PULL_REQUEST=$(gh pr view --json number -jq .number)
+          echo "Used gh to query PR number (${PULL_REQUEST})"
+        fi
         if [ -n "$IDS" ] ; then
           echo "ids=${IDS}" | tee -a "$GITHUB_OUTPUT"
         else
-          if [ -z "$PULL_REQUEST" ] || [ -z "$REPOSITORY" ] ; then
-            echo "::error title=direct-actions/pr-comment - Missing argument::Missing repository (${REPOSITORY}) or PR number (${PULL_REQUEST})."
+          if [ -z "$PULL_REQUEST" ] ; then
+            echo "::error title=direct-actions/pr-comment - Cannot determine pull request::Cannot determine pull request number in this sitation, pass explicitly via pull-request input."
+            exit 1 
+          elif [ -z "$REPOSITORY" ] ; then
+            echo "::error title=direct-actions/pr-comment - Cannot determine repository::Cannot determine repository in this situation, pass explicitly via repository input."
             exit 1 
           elif ! gh api \
               --method GET \
@@ -115,7 +125,7 @@ runs:
           jq \
             --arg author '${{ inputs.author }}' \
             --arg key '${{ inputs.key }}' \
-            --arg matches '${{ inputs.matches }}' \
+            --arg match '${{ inputs.match }}' \
             --arg regex '${{ inputs.regex }}' \
             --arg regex_flags '${{ inputs.regex-flags }}' \
             -rC '
@@ -142,25 +152,26 @@ runs:
             ) |
             if length == 0 then
               []
-            elif $ARGS.named.matches? == "first" then
+            elif $ARGS.named.match? == "first" then
               [first]
-            elif $ARGS.named.matches? == "last" then
+            elif $ARGS.named.match? == "last" then
               [last]
-            elif $ARGS.named.matches? == "all" then
+            elif $ARGS.named.match? == "all" then
               .
             else
-              error("Unknown value for argument \"matches\": \($ARGS.named.matches)")
+              error("Unknown value for argument \"match\": \($ARGS.named.match)")
             end |
             "ids=\(tojson)"
           ' "$OUTPUT" | tee -a "$GITHUB_OUTPUT"
         fi
+        echo "pull-request=${PULL_REQUEST}" >> "$GITHUB_OUTPUT"
       shell: bash
     - env:
         COMMENT: '<!--direct-actions/pr-comment:key:${{ inputs.key }}-->${{ inputs.comment }}'
         GITHUB_TOKEN: ${{ inputs.token }}
         IDS: ${{ steps.setup.outputs.ids }}
         OPERATION: ${{ inputs.operation }}
-        PULL_REQUEST: ${{ inputs.pull-request }}
+        PULL_REQUEST: ${{ steps.setup.outputs.pull-request }}
         QUIET: ${{ inputs.quiet }}
         REPOSITORY: ${{ inputs.repository }}
       id: operation
@@ -172,10 +183,10 @@ runs:
         ERROR=$(mktemp)
         OUTPUT_IDS=()
         if [ "$OPERATION" == 'post' ] ; then
-          IDS='["no-id"]'
+          IDS='["tbd"]'
         elif [ "$OPERATION" == 'upsert' ] ; then
           if [ -z "$IDS" ] || [ "$IDS" = '[]' ]; then
-            IDS='["no-id"]'
+            IDS='["tbd"]'
             OPERATION=post
           fi
         elif [[ "$OPERATION" == 'delete' || "$OPERATION" == 'upsert' || "$OPERATION" == 'get' ]] ; then

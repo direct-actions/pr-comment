@@ -11,31 +11,67 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: |
-          # dump github event
+          # dump github context
           jq -C . <<< '${{ toJSON(github) }}'
+
       - name: Test 1
-        id: test1
         uses: ./
         with:
           key: test1
-          comment: Test 1 - This is a dummy comment. (${{ github.run_id }})
+          comment: key=test1 v1 - This is a dummy comment. (${{ github.run_id }})
+
+      - name: Test 1
+        uses: ./
+        with:
+          key: test1
+          comment: key=test1 v2 - This is a dummy comment. (${{ github.run_id }})
+
+      - name: Test 1 delete
+        uses: ./
+        with:
+          match: all
+          key: test1
+          operation: delete
+
+      - name: Test 1
+        uses: ./
+        with:
+          key: test1
+          comment: key=test1 v1 - This is a dummy comment. (${{ github.run_id }})
+
+      - name: Test 1
+        uses: ./
+        with:
+          key: test1
+          comment: key=test1 v2 - This is a dummy comment. (${{ github.run_id }})
+
+      - run: sleep 5
+
       - name: Test 2
         uses: ./
         with:
           key: test2
-          comment: Test 2 - ${{ github.run_id }}
+          comment: Testx2 upsert - ${{ github.run_id }}
+
       - name: Test 1 get
-        uses: ./
-        with:
-          ids: ${{ steps.test1.outputs.ids }}
-          operation: get
-      - name: Test 1 get
+        id: t1get
         uses: ./
         with:
           key: test1
-          comment: Updated version of Test1 ${{ steps.test1.outputs.ids }} 
-      - name: Test 1 delete
+          operation: get
+
+      - name: Test 1 upsert
         uses: ./
         with:
-          ids: ${{ steps.test1.outputs.ids }}
-          operation: delete
+          key: test1
+          match: first
+          ids: ${{ steps.t1get.outputs.ids }}
+          comment: key=test1 v1 - This is updated dummy comment. (${{ github.run_id }})
+
+      - run: sleep 5
+
+      - name: Test 1 upsert fresh
+        uses: ./
+        with:
+          key: test1
+          comment: key=test1 - This is final dummy comment. (${{ github.run_id }})
