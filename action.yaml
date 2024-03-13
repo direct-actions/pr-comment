@@ -16,7 +16,7 @@ inputs:
     type: string
   comment:
     default: ''
-    description: Body of comment, used with `upsert` or `post` operation.
+    description: Body of comment, used with `post` or `upsert` operation.
     required: false
     type: string
   ids:
@@ -36,7 +36,7 @@ inputs:
     type: string
   operation:
     default: upsert
-    description: Operation to execute - can be one of `delete`, `get`, `post`, `upsert` (default).
+    description: Operation to execute - can be one of `delete`, `get`, `list-keys`, `post`, `upsert` (default).
     required: false
     type: string
   pull-request:
@@ -76,6 +76,9 @@ outputs:
   key:
     description: Pass-through of inputs.key; can be used for chaining.
     value: ${{ inputs.key }}
+  keys:
+    description: JSON list of keys found on a `list-keys` operation.
+    value: ${{ steps.operation.outputs.keys }}
   json-output:
     description: JSON output of last API operation.
     value: ${{ steps.operation.outputs.json-output }}
@@ -172,12 +175,14 @@ runs:
             "ids=\(tojson)"
           ' "$OUTPUT" | tee -a "$GITHUB_OUTPUT"
         fi
+        echo "output-file=${OUTPUT}" >> "$GITHUB_OUTPUT"
         echo "pull-request=${PULL_REQUEST}" >> "$GITHUB_OUTPUT"
       shell: bash
     - env:
         COMMENT: '<!--direct-actions/pr-comment:key:${{ inputs.key }}-->${{ inputs.comment }}'
         GITHUB_TOKEN: ${{ inputs.token }}
         IDS: ${{ steps.setup.outputs.ids }}
+        OUTPUT: ${{ steps.setup.outputs.output-file }}
         OPERATION: ${{ inputs.operation }}
         PULL_REQUEST: ${{ steps.setup.outputs.pull-request }}
         QUIET: ${{ inputs.quiet }}
@@ -187,63 +192,80 @@ runs:
         # ${{ inputs.operation }}
         #
         #set -x
-        OUTPUT=$(mktemp)
         ERROR=$(mktemp)
         OUTPUT_IDS=()
-        if [ "$OPERATION" == 'post' ] ; then
-          IDS='["tbd"]'
-        elif [ "$OPERATION" == 'upsert' ] ; then
-          if [ -z "$IDS" ] || [ "$IDS" = '[]' ]; then
-            IDS='["tbd"]'
-            OPERATION=post
+
+        gh_api() {
+          local operation="$1"
+          local method="$2"
+          local url="$3"
+          local comment="$4"
+
+          if ! gh api \
+              --method "$method" \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "$url" \
+              -f body="${comment}" \
+              >"$OUTPUT" 2>"$ERROR" ; then
+            echo "::error title=direct-actions/pr-comment - API error::" \
+              "::Operation (${operation}) method ${method} url ${url} failed -" \
+              "\"$(cat "$ERROR")\"."
+            exit 1
           fi
-        elif [[ "$OPERATION" == 'delete' || "$OPERATION" == 'upsert' || "$OPERATION" == 'get' ]] ; then
-          if [ -z "$IDS" ] || [ "$IDS" = '[]' ]; then
+          if [ "$QUIET" != 'true' ] ; then
+            echo "::group::operation=${operation} method=${method} url=${url}"
+            jq -C . "$OUTPUT"
+            echo "::endgroup::"
+          fi
+        }
+
+        if [ "$OPERATION" == 'post' ] || [[ "$OPERATION" == 'upsert' && ( -z "$IDS" || "$IDS" = '[]' ) ]]; then
+          gh_api "$OPERATION" POST "/repos/${REPOSITORY}/issues/${PULL_REQUEST}/comments" "$COMMENT"
+          OUTPUT_IDS=("$(jq -r .id "$OUTPUT")")
+        elif [ "$OPERATION" == 'list-keys' ] ; then
+          jq '
+            map(
+              .body |
+              scan("^<!--direct-actions/pr-comment:key:([^>]*)-->")
+            ) |
+            flatten |
+            unique |
+            "keys=\(@json)"
+          ' \
+          "$OUTPUT" | \
+          tee -a "$GITHUB_OUTPUT"
+        elif [[ "$OPERATION" =~ ^(delete|get|upsert)$ ]] ; then
+          if [ -z "$IDS" ] || [ "$IDS" = '[]' ]; then # will IDS ever be -z ?
             if [ "$QUIET" != 'true' ] ; then
-              echo "::warning title=direct-actions/pr-comment - Cannot perform operation::Attempting operation ${OPERATION} but cannot find matching comment(s)."
+              echo "::warning title=direct-actions/pr-comment - Cannot perform" \
+                "operation::Attempting operation ${OPERATION} but cannot find" \
+                "matching comment(s)."
             fi
-            exit 0
+            exit 0 # do we need to exit here
+          else
+            for ID in $(jq -rn "${IDS}[]") ; do
+              URL="/repos/${REPOSITORY}/issues/comments/${ID}"
+              case "$OPERATION" in
+                delete)
+                  gh_api "$OPERATION" DELETE "$URL" "$COMMENT"
+                  ;;
+                get)
+                  gh_api "$OPERATION" GET "$URL" "$COMMENT"
+                  ;;
+                upsert)
+                  gh_api "$OPERATION" PATCH "$URL" "$COMMENT"
+                  ;;
+              esac
+              OUTPUT_IDS+=("$(jq -r .id "$OUTPUT")")
+            done
           fi
         else
-          echo "::warning title=direct-actions/pr-comment - Invalid operation::Invalid operation (${OPERATION}) specified."
+          echo "::warning title=direct-actions/pr-comment - Invalid" \
+            "operation::Invalid operation (${OPERATION}) specified."
           exit 1
         fi
 
-        for ID in $(jq -rn "${IDS}[]") ; do
-          URL="/repos/${REPOSITORY}/issues/comments/${ID}"
-          case "$OPERATION" in
-            delete)
-              METHOD=DELETE
-              ;;
-            get)
-              METHOD=GET
-              ;;
-            post)
-              METHOD=POST
-              URL="/repos/${REPOSITORY}/issues/${PULL_REQUEST}/comments"
-              ;;
-            upsert)
-              METHOD=PATCH
-              ;;
-          esac
-          if ! gh api \
-              --method "$METHOD" \
-              -H "Accept: application/vnd.github+json" \
-              -H "X-GitHub-Api-Version: 2022-11-28" \
-              "$URL" \
-              -f body="${COMMENT}" >"$OUTPUT" 2>"$ERROR" ; then
-            echo "::error title=direct-actions/pr-comment - Error operating on comment::Operation (${OPERATION}) failed on comment ${ID} - $(cat "$ERROR")."
-            exit 1
-          fi
-          OUTPUT_IDS+=$(jq -r .id "$OUTPUT")
-          echo "::group::operation=${OPERATION} method=${METHOD} id=${ID} url=${URL}"
-          jq -C . "$OUTPUT"
-          echo "::endgroup::"
-        done
-        echo "${OUTPUT_IDS[@]}" | jq -rs '"ids=\(map(tostring))"' | tee -a "$GITHUB_OUTPUT"
-
-        echo 'json-output<<_EOF_' >> "$GITHUB_OUTPUT"
-        cat "$OUTPUT" >> "$GITHUB_OUTPUT"
-        echo >> "$GITHUB_OUTPUT"
-        echo '_EOF_' >> "$GITHUB_OUTPUT"
+        jq -rs '"ids=\(map(tostring))"' <<< "${OUTPUT_IDS[@]}" | tee -a "$GITHUB_OUTPUT"
+        jq -r '"json-output<<_EOF_\n\(@json)\n_EOF_\n"' "$OUTPUT" >> "$GITHUB_OUTPUT"
       shell: bash
