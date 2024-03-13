@@ -99,10 +99,6 @@ runs:
         #set -x
         OUTPUT=$(mktemp)
         ERROR=$(mktemp)
-        if [ -z "$PULL_REQUEST" ] ; then
-          PULL_REQUEST=$(gh pr view --json number --jq .number)
-          echo "Used gh to query PR number (${PULL_REQUEST})"
-        fi
         if [ -n "$IDS" ] ; then
           echo "ids=${IDS}" | tee -a "$GITHUB_OUTPUT"
         else
