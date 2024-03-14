@@ -81,5 +81,13 @@ jobs:
       - name: Test 1 minimize
         uses: ./
         with:
+          match: all
           key: test1
           operation: minimize
+
+      - name: Test 1 unminimize
+        uses: ./
+        with:
+          match: last 
+          key: test1
+          operation: unminimize
