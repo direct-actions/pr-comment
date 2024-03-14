@@ -29,6 +29,11 @@ inputs:
     description: (Optional) Unique & hidden key used to match comment(s) across operations.
     required: false
     type: string
+  key_regex:
+    default: ''
+    description: (Optional) Key regex used when matching existing comments. When not specified, `key` is used instead.
+    required: false
+    type: string
   match:
     default: last
     description: Mode to operate on exiting comments, can be `first`, `last` or `all`.
@@ -169,6 +174,7 @@ runs:
         jq \
           --arg author '${{ inputs.author }}' \
           --arg key '${{ inputs.key }}' \
+          --arg key_regex '${{ inputs.key_regex }}' \
           --arg match '${{ inputs.match }}' \
           --arg regex '${{ inputs.regex }}' \
           --arg regex_flags '${{ inputs.regex-flags }}' \
@@ -179,7 +185,14 @@ runs:
               else
                 .
               end |
-              if $ARGS.named.key? != "" then
+              if $ARGS.named.key_regex != "" then
+                select(
+                  .body |
+                  capture("<!--direct-actions/pr-comment:key:(?<key>[^>])*-->") |
+                  .key |
+                  test($ARGS.named.key_regex)
+                )
+              elif $ARGS.named.key? != "" then
                 select(
                   .body |
                   startswith("<!--direct-actions/pr-comment:key:\($ARGS.named.key)-->")
