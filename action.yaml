@@ -36,7 +36,7 @@ inputs:
     type: string
   match:
     default: last
-    description: Mode to operate on exiting comments, can be `first`, `last` or `all`.
+    description: Mode to operate on exiting comments, can be `all`, `allbutlast`, `first`, or `last`.
     required: false
     type: string
   operation:
@@ -97,7 +97,7 @@ runs:
       id: operation
       if: ${{ inputs.operation != 'post' }}
       run: |
-        # ${{ inputs.operation }}
+        # direct-actions/pr-comment ${{ inputs.operation }}
         if [ "$ACTIONS_RUNNER_DEBUG" == 'true' ] ; then
           set -x
         fi
@@ -210,6 +210,8 @@ runs:
               []
             elif $ARGS.named.match? == "all" then
               .
+            elif $ARGS.named.match? == "allbutlast" then
+              .[0:-1]
             elif $ARGS.named.match? == "first" then
               [first]
             elif $ARGS.named.match? == "last" then
@@ -248,14 +250,14 @@ runs:
               "matching comment(s)."
           else
             for (( x=0 ; x < NUM_COMMENTS ; x++ )) ; do 
-              ID=$(jq --arg index "$x" -r '.[$index | tonumber].id' "$COMMENTS")
-              URL="/repos/${REPOSITORY}/issues/comments/${ID}"
               case "$OPERATION" in
                 delete)
-                  gh_api "$OPERATION" DELETE "$URL" "$COMMENT"
+                  ID=$(jq --arg index "$x" -r '.[$index | tonumber].id' "$COMMENTS")
+                  gh_api "$OPERATION" DELETE "/repos/${REPOSITORY}/issues/comments/${ID}" "$COMMENT"
                   ;;
                 get)
-                  gh_api "$OPERATION" GET "$URL" "$COMMENT"
+                  ID=$(jq --arg index "$x" -r '.[$index | tonumber].id' "$COMMENTS")
+                  gh_api "$OPERATION" GET "repos/${REPOSITORY}/issues/comments/${ID}" "$COMMENT"
                   ;;
                 minimize)
                   NODE_ID=$(jq --arg index "$x" -r '.[$index | tonumber].node_id' "$COMMENTS")
@@ -276,7 +278,8 @@ runs:
                     }"
                   ;;
                 upsert)
-                  gh_api "$OPERATION" PATCH "$URL" "$COMMENT"
+                  ID=$(jq --arg index "$x" -r '.[$index | tonumber].id' "$COMMENTS")
+                  gh_api "$OPERATION" PATCH "/repos/${REPOSITORY}/issues/comments/${ID}" "$COMMENT"
                   ;;
               esac
             done
