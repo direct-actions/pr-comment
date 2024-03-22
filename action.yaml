@@ -29,7 +29,7 @@ inputs:
     description: (Optional) Unique & hidden key used to match comment(s) across operations.
     required: false
     type: string
-  key_regex:
+  key-regex:
     default: ''
     description: (Optional) Key regex used when matching existing comments. When not specified, `key` is used instead.
     required: false
@@ -174,7 +174,7 @@ runs:
         jq \
           --arg author '${{ inputs.author }}' \
           --arg key '${{ inputs.key }}' \
-          --arg key_regex '${{ inputs.key_regex }}' \
+          --arg key_regex '${{ inputs.key-regex }}' \
           --arg match '${{ inputs.match }}' \
           --arg regex '${{ inputs.regex }}' \
           --arg regex_flags '${{ inputs.regex-flags }}' \
