@@ -188,7 +188,7 @@ runs:
               if $ARGS.named.key_regex != "" then
                 select(
                   .body |
-                  capture("<!--direct-actions/pr-comment:key:(?<key>[^>])*-->") |
+                  capture("<!--direct-actions/pr-comment:key:(?<key>[^>]*)-->") |
                   .key |
                   test($ARGS.named.key_regex)
                 )
