@@ -87,7 +87,7 @@ outputs:
     description: JSON output of last API operation.
     value: ${{ steps.operation.outputs.json-output }}
   pull-request:
-    description: Pull request ID as discovered or passed in.
+    description: Pull Request number as discovered or passed in.
     value: ${{ steps.operation.outputs.pull-request }}
 
 runs:
@@ -166,14 +166,15 @@ runs:
         if [ -z "$PULL_REQUEST" ] ; then
           API_OUTPUT=$(mktemp)
           gh_api 'get-pr-associated-with-commit' GET "/repos/${REPOSITORY}/commits/${SHA}/pulls" '' "$API_OUTPUT"
-          PULL_REQUEST=$(jq first.id "$API_OUTPUT")
+          PULL_REQUEST=$(jq first.number "$API_OUTPUT")
           if [ -z "$PULL_REQUEST" ] ; then
             if [ "$QUIET" = 'true' ] || [ "$ERROR_ON_MISSING_PR" != 'true' ] ; then
-              echo 'Cannot determine pull request ID, exiting.'
+              echo 'Cannot determine Pull Request number, exiting.'
             else
               echo "::error title=direct-actions/pr-comment - Cannot determine" \
-                "pull request::Cannot determine pull request ID in this" \
-                "sitation, pass explicitly via pull-request input."
+                "pull request::Cannot determine Pull Request number in this" \
+                "sitation, consider passing explicitly via pull-request input," \
+                "or set `error-on-missing-pr: false` to suppress this error."
             fi
             if [ "$ERROR_ON_MISSING_PR" == 'true' ] ; then
               exit 1
