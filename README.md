@@ -4,7 +4,9 @@ multiple runs. Upsert, post, delete comments.
 
 # Usage
 ## Post a comment
-To simply post a comment in the current PR.
+To simply post a comment in the current PR. By default, the Pull Request ID is
+determined automatically from the github context or an API call to retrieve
+PRs associated with the commit.
 ```
 - uses: direct-actions/pr-comment@v0.1.0
   with:
