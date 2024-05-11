@@ -87,3 +87,6 @@ different repo, the default token will need to be overridden.
     repository: other-org/other-repository
     token: ${{ steps.get-token.outputs.token }}
 ```
+
+## TODO
+- add pagination iteration / merging routing
