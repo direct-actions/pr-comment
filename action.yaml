@@ -165,7 +165,7 @@ runs:
         PULL_REQUEST=${PULL_REQUEST:-${{ github.event.number }}}
         if [ -z "$PULL_REQUEST" ] ; then
           API_OUTPUT=$(mktemp)
-          gh_api 'get-pr-associated-with-commit' GET "/repos/${REPOSITORY}/commits/${SHA}/pulls" '' "$API_OUTPUT"
+          gh_api 'get-pr-associated-with-commit' GET "/repos/${REPOSITORY}/commits/${SHA}/pulls?per_page=100" '' "$API_OUTPUT"
           PULL_REQUEST=$(jq first.number "$API_OUTPUT")
           if [ -z "$PULL_REQUEST" ] ; then
             if [ "$QUIET" = 'true' ] || [ "$ERROR_ON_MISSING_PR" != 'true' ] ; then
@@ -191,7 +191,7 @@ runs:
             "explicitly via repository input."
           exit 1
         else
-          gh_api 'get-existing-comments' GET "/repos/${REPOSITORY}/issues/${PULL_REQUEST}/comments" '' "$ALL_COMMENTS"
+          gh_api 'get-existing-comments' GET "/repos/${REPOSITORY}/issues/${PULL_REQUEST}/comments?per_page=100" '' "$ALL_COMMENTS"
         fi
 
         if [ "$ACTIONS_RUNNER_DEBUG" == 'true' ] ; then echo ::group::all_comments.json
@@ -285,7 +285,7 @@ runs:
                   ;;
                 get)
                   ID=$(jq --arg index "$x" -r '.[$index | tonumber].id' "$COMMENTS")
-                  gh_api "$OPERATION" GET "repos/${REPOSITORY}/issues/comments/${ID}" "$COMMENT"
+                  gh_api "$OPERATION" GET "repos/${REPOSITORY}/issues/comments/${ID}?per_page=100" "$COMMENT"
                   ;;
                 minimize)
                   NODE_ID=$(jq --arg index "$x" -r '.[$index | tonumber].node_id' "$COMMENTS")
